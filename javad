@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+#******************************************************
+# Usage function
+#******************************************************
+usage()
+{
+  echo "Usage: javad [0|1|2|3] [start|stop]"
+  echo "where 0-3 in the first argument represent the USB port of that number"
+  exit
+}
+#
+#
+#******************************************************
+# Start data acquisition
+#******************************************************
+start_acquire()
+{
+
+# Set the serial settings
+stty -echo -echoe -echok -iexten -clocal ignpar -icrnl -ixon -opost -onlcr -isig -icanon < /dev/ttyUSB0
+
+# Disable any pre-existing periodic USB output
+  echo 'dm,/dev/usb/a' > $CPORT
+
+# Fire up the data acquisition process, making sure it isn't already running
+  temp=`/usr/local/bin/javacquire -r $CPORT`
+  if [ $? -eq 1 ]
+  then
+    echo "javad: javacquire is already running on $CPORT"
+    exit 1
+  fi
+
+# Start up the data acquisition process (in the background)
+  javacquire $CPORT &
+
+# Echo the one-time parameters
+  sleep 2
+  echo 'print,/par/rcv/id' > $CPORT 		# Receiver ID
+  sleep 0.1
+  echo 'print,/par/dev/blk/a/size' > $CPORT	# total memory
+  sleep 0.1
+  echo 'print,/par/rcv/ver/board' > $CPORT	# board version
+  sleep 0.1
+  echo 'print,/par/rcv/ver/main' > $CPORT	# firmware version
+  sleep 0.1
+  echo 'print,/par/dev/blk/a/free' > $CPORT	# free memory
+  sleep 0.1
+
+# Enable the desired periodic messages
+  echo 'em,/dev/usb/a,jps/PG:0.1' > $CPORT # geodetic position
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/VG:0.1' > $CPORT # geodetic velocity
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/GT:0.1' > $CPORT # GPS time
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/DP:0.1' > $CPORT # dilution of precision
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/GO:0.1' > $CPORT # GPS clock error
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/UO:1.0' > $CPORT # GPS/UTC diff (leapsecs)
+  sleep 0.1
+  echo 'em,/dev/usb/a,jps/RD:1.0' > $CPORT # Receiver date
+  sleep 0.1
+
+}
+# End of start_acquire function
+
+#******************************************************
+# Stop data acquisition
+#******************************************************
+stop_acquire()
+{
+
+# Stop the data acquisition process
+  temp=`/usr/local/bin/javacquire -r $CPORT`
+  if [ $? -eq 0 ]
+  then
+    echo "javad: javacquire is not running on port $CPORT"
+  else
+    /usr/local/bin/javacquire -q $CPORT
+  fi
+
+# Disable any pre-existing periodic USB output
+  sleep 1 # this is critical for proper program exit
+  echo 'dm,/dev/usb/a' > $CPORT
+
+# Exit script
+  exit 0
+
+}
+# End of stop_acquire function
+
+#******************************************************
+# Main script
+#******************************************************
+
+# Check the inputs and print a usage message if needed
+if [ $# -eq 0 ]
+then
+  usage
+fi
+#
+# Get the computer serial port from the command line
+case $1 in
+  0)
+    CPORT=/dev/ttyUSB0
+    ;;
+  1)
+    CPORT=/dev/ttyUSB1
+    ;;
+  2)
+    CPORT=/dev/ttyUSB2
+    ;;
+  3)
+    CPORT=/dev/ttyUSB3
+    ;;
+  *)
+    echo "javad: $1 not a valid USB port - exiting"
+    exit -1
+    ;;
+esac
+#
+# Get the start/stop instruction from command line
+case $2 in
+  start|Start|START)
+    start_acquire $1 $2
+    ;;
+  stop|Stop|STOP)
+    stop_acquire $1 $2
+    ;;
+  *)
+    echo "javad: $2 not a valid instruction - exiting"
+    exit -1
+    ;;
+esac
+
